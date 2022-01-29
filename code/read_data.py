@@ -7,6 +7,7 @@ def read_cashapp(path):
     
     cashapp_df = pd.read_csv(path)
     cashapp_df = cashapp_df[cashapp_df["Transaction Type"].isin(["Bitcoin Sale", "Bitcoin Buy"])]
+    cashapp_df = cashapp_df.reset_index(drop=True)
 
     df['Date'] = [parser.parse(date) for date in cashapp_df["Date"]]
     df = df.assign(Exchange = 'CashApp') 
@@ -54,11 +55,20 @@ def read_uniswap(path):
 
     return(df)
 
+def read_coinbase(path):
+    """Create transaction Data.Frame from Coinbase .csv"""
+    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount"])
 
+    coinbase_df = pd.read_csv(path)
+    coinbase_df = coinbase_df[coinbase_df["Transaction Type"].isin(["Buy", "Sell"])]
+    coinbase_df = coinbase_df.reset_index(drop=True)
 
-    
+    df['Date'] = [parser.parse(date) for date in coinbase_df["Timestamp"]]
+    df = df.assign(Exchange = 'Coinbase') 
+    df['Transaction'] = coinbase_df['Transaction Type']
+    df['Asset'] = coinbase_df['Asset']
+    df['Payment'] = coinbase_df['Spot Price Currency']
+    df['Asset Price'] = coinbase_df['Spot Price at Transaction']
+    df['Asset Amount'] = coinbase_df['Quantity Transacted']
 
-# make a function that for each unique value finds id
-
-# with that id get 
-
+    return(df)
