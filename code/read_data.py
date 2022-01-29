@@ -1,5 +1,21 @@
 import pandas as pd
 from dateutil import parser
+from pycoingecko import CoinGeckoAPI
+from itertools import compress
+
+cg = CoinGeckoAPI()
+
+def get_coin_id(symbol):
+    """Returns id for a given symbol via CoinGecko API"""
+    # Find match for symbol in CoinGecko coins list
+    coins = cg.get_coins()
+    coin = [coin for coin in coins if symbol.lower() == coin['symbol']].pop()  # Take first match
+    return(coin['id'])
+
+def get_price_at_date(symbol, date):
+    history = cg.get_coin_history_by_id(id=get_coin_id(symbol), date=date.strftime('%d-%m-%Y'))
+    price = history['market_data']['current_price']['usd']
+    return(price)
 
 def read_cashapp(path):
     """Create transaction Data.Frame from CashApp .csv"""
@@ -56,7 +72,7 @@ def read_uniswap(path):
     return(df)
 
 def read_coinbase(path):
-    """Create transaction Data.Frame from Coinbase .csv"""
+    """Create transaction Data.Frame from Coinbase .csv file"""
     df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount"])
 
     coinbase_df = pd.read_csv(path)
@@ -71,4 +87,41 @@ def read_coinbase(path):
     df['Asset Price'] = coinbase_df['Spot Price at Transaction']
     df['Asset Amount'] = coinbase_df['Quantity Transacted']
 
+    return(df)
+
+def read_coinbasepro(path):
+    """Create transaction Data.Frame from Coinbase Pro .csv file"""
+    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount"])
+
+    coinbase_df = pd.read_csv(path)
+
+    records = []
+    for index, row in coinbase_df.iterrows():
+        record = {key: None for key in list(df.columns)}
+        
+        if row['price/fee/total unit'] == 'USD':
+            record['Date'] = parser.parse(row["created at"])
+            record['Transaction'] = row['side']
+            record['Asset'] = row['size unit']
+            record['Payment'] = 'USD'
+            record['Asset Price'] = row['price']
+            record['Asset Amount'] = row['size']
+
+        else:
+            # Record2 identifies the underlying asset
+            record2 = {key: None for key in list(df.columns)}
+            record['Date'] = record2['Date'] = parser.parse(row["created at"])
+            record['Transaction'] = row['side']
+            record2['Transaction'] = {'BUY', 'SELL'}.difference({record['Transaction']}).pop() # Take complement 
+            record['Asset'], record2['Asset'] = row['size unit'], row['price/fee/total unit']
+            record['Payment'] = record2['Payment'] = 'USD'
+            record2['Asset Price'] = get_price_at_date(symbol=row['price/fee/total unit'], date=record['Date'])
+            record['Asset Price'] = record2['Asset Price']*row['price']
+            record['Asset Amount'], record2['Asset Amount'] = row['size'], row['price']
+            records.append(record2)
+        records.append(record)
+    
+    for i, rec in enumerate(records):
+        df.loc[i] = rec
+    df = df.assign(Exchange = 'Coinbase Pro')
     return(df)
