@@ -1,7 +1,7 @@
 import pandas as pd
 from dateutil import parser
 from pycoingecko import CoinGeckoAPI
-from itertools import compress
+from glob import glob
 
 cg = CoinGeckoAPI()
 
@@ -134,6 +134,27 @@ def read_coinbasepro(path):
     df = df.assign(Exchange = 'Coinbase Pro')
     return(df)
 
+def read_fidelity(path):
+    """Reads in data from quarters Fidelity"""
+    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount"])
+    
+    paths = glob(path)
+    df_list = [pd.read_csv(path, header=1) for path in paths]
+    fidelity_df = pd.concat(df_list).reset_index()
+
+    transaction_filter = [x & y for x, y in zip(fidelity_df['Symbol'] != ' ', pd.notna(fidelity_df['Symbol']))]
+    fidelity_df = fidelity_df.loc[transaction_filter]
+    
+    df['Date'] = [parser.parse(date) for date in fidelity_df['Run Date']]
+    df['Exchange'] = 'Fidelity'
+    df['Transaction'] = ['SELL' if quant < 0 else 'BUY' for quant in fidelity_df['Quantity']]
+    df['Asset'] = fidelity_df['Symbol']
+    df['Payment'] = 'USD'
+    df['Asset Price'] = fidelity_df['Price ($)']
+    df['Asset Amount'] = abs(fidelity_df['Amount ($)'])
+
+    return(df)
+    
 def read_data(path, exchange):
     """Wrapper for exchange data readers"""
 
@@ -148,5 +169,8 @@ def read_data(path, exchange):
     
     elif exchange == 'CashApp':
         df = read_cashapp(path)
+    
+    elif exchange == 'Fidelity':
+        df = read_fidelity(path)
     
     return(df)
