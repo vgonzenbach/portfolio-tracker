@@ -28,17 +28,25 @@ def read_cashapp(path):
     df['Date'] = [parser.parse(date) for date in cashapp_df["Date"]]
     df = df.assign(Exchange = 'CashApp') 
 
+    def clean_currency(x):
+        """ If the value is a string, then remove currency symbol and delimiters
+        otherwise, the value is numeric and can be converted
+        """
+        if isinstance(x, str):
+            return(x.replace('$', '').replace(',', ''))
+        return(x)
+    
     def clean_transaction(record):
         if record == "Bitcoin Buy" :
             return("BUY")
         elif record == "Bitcoin Sale" :
             return("SALE")
     
-    df['Transaction'] = list(cashapp_df["Transaction Type"].apply(clean_transaction).astype('str'))
-    df['Asset'] = list(cashapp_df["Asset Type"])
-    df['Payment'] = list(cashapp_df["Currency"])
-    df["Asset Price"] = list(cashapp_df["Asset Price"])
-    df["Asset Amount"] = list(cashapp_df["Asset Amount"])
+    df['Transaction'] = cashapp_df["Transaction Type"].apply(clean_transaction).astype('str')
+    df['Asset'] = cashapp_df["Asset Type"]
+    df['Payment'] = cashapp_df["Currency"]
+    df["Asset Price"] = list(map(clean_currency, cashapp_df["Asset Price"]))
+    df["Asset Amount"] = cashapp_df["Asset Amount"]
 
     return(df)
 
@@ -58,7 +66,7 @@ def read_uniswap(path):
         buy = {key: None for key in list(df.columns)}
 
         sell['Date'] = buy['Date'] = parser.parse(f'{row["Date"]} {row["Time"]}')
-        sell['Exchange'] = buy['Exchange'] = "UniSwap"
+        sell['Exchange'] = buy['Exchange'] = "Uniswap"
         sell['Transaction'], buy['Transaction'] = 'SALE', 'BUY'
         sell['Asset'], buy['Asset'] = row['Sell Currency'], row['Buy Currency']
         sell['Payment'] = buy['Payment'] = 'USD'
@@ -124,4 +132,21 @@ def read_coinbasepro(path):
     for i, rec in enumerate(records):
         df.loc[i] = rec
     df = df.assign(Exchange = 'Coinbase Pro')
+    return(df)
+
+def read_data(path, exchange):
+    """Wrapper for exchange data readers"""
+
+    if exchange == 'Coinbase Pro':
+        df = read_coinbasepro(path)
+    
+    elif exchange == 'Coinbase':
+        df = read_coinbase(path)
+    
+    elif exchange == 'Uniswap':
+        df = read_uniswap(path)
+    
+    elif exchange == 'CashApp':
+        df = read_cashapp(path)
+    
     return(df)
