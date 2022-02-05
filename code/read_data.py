@@ -1,11 +1,8 @@
 import pandas as pd
 from dateutil import parser
-from datetime import datetime
 import pytz
 from pycoingecko import CoinGeckoAPI
 from glob import glob
-
-
 
 def get_coin_id(symbol):
     """Returns id for a given symbol via CoinGecko API"""
@@ -30,6 +27,7 @@ def read_cashapp(path):
     cashapp_df = cashapp_df[cashapp_df["Transaction Type"].isin(["Bitcoin Sale", "Bitcoin Buy"])]
     cashapp_df = cashapp_df.reset_index(drop=True)
 
+    #timezone = pytz.timezone('America/New_York')
     df['Date'] = [parser.parse(date) for date in cashapp_df["Date"]]
     df = df.assign(Exchange = 'CashApp') 
 
@@ -64,13 +62,13 @@ def read_uniswap(path):
     uniswap_df = uniswap_df.reset_index(drop=True)
 
     # Get coins for calling CoinGecko API
-
+    timezone = pytz.timezone('America/New_York')
     for index, row in uniswap_df.iterrows():
         """Create one buy and one sell row for each row in uniswap_df"""
         sell = {key: None for key in list(df.columns)}
         buy = {key: None for key in list(df.columns)}
 
-        sell['Date'] = buy['Date'] = pytz.utc.localize(parser.parse(f'{row["Date"]} {row["Time"]}'))
+        sell['Date'] = buy['Date'] = timezone.localize(parser.parse(f'{row["Date"]} {row["Time"]}'))
         sell['Exchange'] = buy['Exchange'] = "Uniswap"
         sell['Transaction'], buy['Transaction'] = 'SELL', 'BUY'
         sell['Asset'], buy['Asset'] = row['Sell Currency'], row['Buy Currency']
@@ -128,8 +126,8 @@ def read_coinbasepro(path):
             record2['Transaction'] = {'BUY', 'SELL'}.difference({record['Transaction']}).pop() # Take complement 
             record['Asset'], record2['Asset'] = row['size unit'], row['price/fee/total unit']
             record['Payment'] = record2['Payment'] = 'USD'
+            record['Asset Price'] = get_price_at_date(symbol=row['size unit'], date=record['Date'])
             record2['Asset Price'] = get_price_at_date(symbol=row['price/fee/total unit'], date=record['Date'])
-            record['Asset Price'] = record2['Asset Price']*row['price']
             record['Asset Amount'], record2['Asset Amount'] = row['size'], row['price']
             records.append(record2)
         records.append(record)
@@ -150,7 +148,7 @@ def read_fidelity(path):
     transaction_filter = [x & y for x, y in zip(fidelity_df['Symbol'] != ' ', pd.notna(fidelity_df['Symbol']))]
     fidelity_df = fidelity_df.loc[transaction_filter].reset_index(drop=True)
     
-    timezone = pytz.timezone('EST')
+    timezone = pytz.timezone('America/New_York')
     df['Date'] = [timezone.localize(parser.parse(date)) for date in fidelity_df['Run Date']]
     df['Exchange'] = 'Fidelity'
     df['Transaction'] = ['SELL' if quant < 0 else 'BUY' for quant in fidelity_df['Quantity']]
