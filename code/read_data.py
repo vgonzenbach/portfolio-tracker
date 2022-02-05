@@ -1,18 +1,23 @@
 import pandas as pd
 from dateutil import parser
+from datetime import datetime
+import pytz
 from pycoingecko import CoinGeckoAPI
 from glob import glob
 
-cg = CoinGeckoAPI()
+
 
 def get_coin_id(symbol):
     """Returns id for a given symbol via CoinGecko API"""
     # Find match for symbol in CoinGecko coins list
+    cg = CoinGeckoAPI()
     coins = cg.get_coins()
     coin = [coin for coin in coins if symbol.lower() == coin['symbol']].pop()  # Take first match
     return(coin['id'])
 
 def get_price_at_date(symbol, date):
+    """Given symbol and date returns price via CoinGecko API"""
+    cg = CoinGeckoAPI()
     history = cg.get_coin_history_by_id(id=get_coin_id(symbol), date=date.strftime('%d-%m-%Y'))
     price = history['market_data']['current_price']['usd']
     return(price)
@@ -40,12 +45,12 @@ def read_cashapp(path):
         if record == "Bitcoin Buy" :
             return("BUY")
         elif record == "Bitcoin Sale" :
-            return("SALE")
+            return("SELL")
     
     df['Transaction'] = cashapp_df["Transaction Type"].apply(clean_transaction).astype('str')
     df['Asset'] = cashapp_df["Asset Type"]
     df['Payment'] = cashapp_df["Currency"]
-    df["Asset Price"] = list(map(clean_currency, cashapp_df["Asset Price"]))
+    df["Asset Price"] = cashapp_df["Asset Price"].apply(clean_currency).astype(float)
     df["Asset Amount"] = cashapp_df["Asset Amount"]
 
     return(df)
@@ -65,9 +70,9 @@ def read_uniswap(path):
         sell = {key: None for key in list(df.columns)}
         buy = {key: None for key in list(df.columns)}
 
-        sell['Date'] = buy['Date'] = parser.parse(f'{row["Date"]} {row["Time"]}')
+        sell['Date'] = buy['Date'] = pytz.utc.localize(parser.parse(f'{row["Date"]} {row["Time"]}'))
         sell['Exchange'] = buy['Exchange'] = "Uniswap"
-        sell['Transaction'], buy['Transaction'] = 'SALE', 'BUY'
+        sell['Transaction'], buy['Transaction'] = 'SELL', 'BUY'
         sell['Asset'], buy['Asset'] = row['Sell Currency'], row['Buy Currency']
         sell['Payment'] = buy['Payment'] = 'USD'
         sell["Asset Price"], buy["Asset Price"] = row['Sell Fiat Amount'] / row['Sell Amount'], row['Buy Fiat Amount'] / row['Buy Amount']
@@ -89,7 +94,7 @@ def read_coinbase(path):
 
     df['Date'] = [parser.parse(date) for date in coinbase_df["Timestamp"]]
     df = df.assign(Exchange = 'Coinbase') 
-    df['Transaction'] = coinbase_df['Transaction Type']
+    df['Transaction'] = coinbase_df['Transaction Type'].apply(str.upper)
     df['Asset'] = coinbase_df['Asset']
     df['Payment'] = coinbase_df['Spot Price Currency']
     df['Asset Price'] = coinbase_df['Spot Price at Transaction']
@@ -140,18 +145,19 @@ def read_fidelity(path):
     
     paths = glob(path)
     df_list = [pd.read_csv(path, header=1) for path in paths]
-    fidelity_df = pd.concat(df_list).reset_index()
+    fidelity_df = pd.concat(df_list).reset_index(drop=True)
 
     transaction_filter = [x & y for x, y in zip(fidelity_df['Symbol'] != ' ', pd.notna(fidelity_df['Symbol']))]
-    fidelity_df = fidelity_df.loc[transaction_filter]
+    fidelity_df = fidelity_df.loc[transaction_filter].reset_index(drop=True)
     
-    df['Date'] = [parser.parse(date) for date in fidelity_df['Run Date']]
+    timezone = pytz.timezone('EST')
+    df['Date'] = [timezone.localize(parser.parse(date)) for date in fidelity_df['Run Date']]
     df['Exchange'] = 'Fidelity'
     df['Transaction'] = ['SELL' if quant < 0 else 'BUY' for quant in fidelity_df['Quantity']]
     df['Asset'] = fidelity_df['Symbol']
     df['Payment'] = 'USD'
     df['Asset Price'] = fidelity_df['Price ($)']
-    df['Asset Amount'] = abs(fidelity_df['Amount ($)'])
+    df['Asset Amount'] = abs(fidelity_df['Quantity'])
 
     return(df)
     
@@ -173,4 +179,5 @@ def read_data(path, exchange):
     elif exchange == 'Fidelity':
         df = read_fidelity(path)
     
+    df['Cost Basis'] = df['Asset Price'] * df['Asset Amount']
     return(df)
