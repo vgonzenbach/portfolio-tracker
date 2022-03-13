@@ -1,5 +1,6 @@
+import os
 import read_data
-#import get_costbasis
+from get_costbasis import pair_sales
 import pandas as pd
 from glob import glob
 
@@ -18,13 +19,10 @@ def main():
         exchange_data.append(df)
 
     df = pd.concat(exchange_data).sort_values(by='Date').reset_index(drop=True)
+    df.to_csv(PROJECT_ROOT + 'transactions.csv', index=False)
+    pair_sales(df).to_csv(PROJECT_ROOT + 'pairs.csv', index=False)
 
-    # Use of different exchanges
-    df['Exchange'].value_counts().plot(kind='bar')
-
-    return df
+    return None
 
 if __name__ == '__main__':
-    df = main()
-    df.to_csv('output.csv')
-
+    main()
