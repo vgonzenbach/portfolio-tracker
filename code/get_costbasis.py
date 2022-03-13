@@ -1,56 +1,78 @@
+from itertools import dropwhile
+from markupsafe import re
+import read_data
 import pandas as pd
 import numpy as np
-from plotnine import *
-from read_data import read_cashapp
+#import numpy as np
+#from plotnine import *
 
-df = read_cashapp('data/CashApp/cash_app_report.csv')
-
-def clean_currency(x):
-    """ If the value is a string, then remove currency symbol and delimiters
-    otherwise, the value is numeric and can be converted
-    """
-    if isinstance(x, str):
-        return(x.replace('$', '').replace(',', ''))
-    return(x)
+# Use method
+def get_costbasis(df):
+    """Calculate average cost basis for an asset"""
+    cb_df = pd.DataFrame(columns=['Asset', 'Buy Avg. CB', 'Sell Avg. CB', 'ROI'])
     
-df['Asset Price'] = df['Asset Price'].apply(clean_currency).astype('float')
+    records = []
+    for asset in pd.unique(df.Asset):
+        rec = {key: None for key in list(cb_df.columns)}
+        asset_df = df[df.Asset == asset]
+        rec['Asset'] = asset
+        b_filter = asset_df.Transaction == 'BUY'
+        rec['Buy Avg. CB'] = asset_df[b_filter]['Asset Price'].sum() / sum(b_filter)
+        s_filter = asset_df.Transaction == 'SELL'
+        rec['Sell Avg. CB'] = asset_df[s_filter]['Asset Price'].sum() / sum(s_filter)
+        rec['ROI'] = 100*(rec['Sell Avg. CB'] / rec['Buy Avg. CB'])
+        records.append(rec)
+    
+    cb_df = pd.DataFrame.from_records(records)
+    return(cb_df)
 
-# Calculate Cost basis per transaction
-df["Cost Basis"] = [x*y for (x, y) in zip(df["Asset Price"], df["Asset Amount"])]
+def get_current_asset_amount(df):
+    quantifier = [1 if t == 'BUY' else -1 for t in df['Transaction']] 
+    df['qAmount'] = df['Asset Amount'] * quantifier
 
-get_costbasis(df, type="buys"):
+    amt_df = pd.DataFrame(columns=['Asset', 'Current Amount'])
+    records = []
+    for asset in pd.unique(df.Asset):
+        rec = {key: None for key in list(amt_df.columns)}
+        asset_df = df[df.Asset == asset]
+        rec['Asset'] = asset
+        rec['Amount'] = sum(asset_df['qAmount'])
+        records.append(rec)
+    return pd.DataFrame.from_records(records)
 
+def pair_sales(df, rule='hifo', year=2021):
+    df = df[df.Exchange != 'Fidelity']
+    sell_df = df[(df.Transaction == 'SELL') & (df.Date >= f'{year}-01-01') & (df.Date <= f'{year}-12-31')]
 
+    pairs = []
+    for asset in pd.unique(sell_df.Asset):
+        
+        for s, sale in sell_df[sell_df.Asset == asset].iterrows():
+            buy_df = df[(df.Transaction == 'BUY') & (df.Asset == asset)].loc[:s].sort_values(by='Asset Price', ascending=False) 
+            
+            for b, buy in buy_df.iterrows():
+                
+                diff = buy['Asset Amount'] - sale['Asset Amount']
+                if (diff > 0): # Is the highest buy enough to cover this sale?
+                    
+                    buy['Asset Amount'] = sale['Asset Amount']
+                    pairs.append(list(sale) + list(buy))
 
+                    df.loc[b, 'Asset Amount'] = diff # Discount sell from buy amt in transaction record
+                    break # Go to next sale
 
-def get_costbasis(df, asset='BTC'):
-    """Calculate cost basis for an asset"""
-    df = df[df['Asset'] == asset]
-    buys_df = df[df["Transaction"] == "BUY"]
-    sales_df = df[df["Transaction"] == "SALE"]
+                elif (diff <= 0):
+                    
+                    sale['Asset Amount'] = buy['Asset Amount']
+                    pairs.append(list(sale) + list(buy))
+                    
+                    df = df.drop(b)
+                    buy_df = buy_df.drop(b)
+                    sale['Asset Amount'] = abs(diff)
 
-    total_asset_amount = sum(buys_df["Asset Amount"]) - sum(sales_df["Asset Amount"])
-    cb_pershare = cost_basis / total_btc
-    cost_basis / total_asset_amount
-    # Adjust for sales in costbasis
-    return(total_asset_amount)
+    pairs_df = pd.DataFrame.from_records(pairs)
+    pairs_df.columns = [col + ' (Sell)' for col in list(df.columns)] + [col + ' (Buy)' for col in list(df.columns)]
 
-df["Cost Basis"] = #
-total_btc = sum(buys_df["Asset Amount"])
-cost_basis = sum(buys_df["Amount"])
-
-cb_pershare = cost_basis / total_btc
-
-cb_pershare
-
-#def get_costbasis(df, asset='BTC'):
-#    """Calculate cost basis for an asset"""
-#    df = df[df['Asset'] == asset]
-#    buys_df = df[df["Transaction"] == "BUY"]
-#    sales_df = df[df["Transaction"] == "SALE"]
-#
-#    total_asset_amount = sum(buys_df["Asset Amount"]) - sum(sales_df["Asset Amount"])
-#    cb_pershare = cost_basis / total_btc
-#    cost_basis / total_asset_amount
-#    # Adjust for sales in costbasis
-#    return(total_asset_amount)
+    pairs_df['Cost Basis (Sell)'] = pairs_df['Asset Price (Sell)'] * pairs_df['Asset Amount (Sell)']
+    pairs_df['Cost Basis (Buy)'] = pairs_df['Asset Price (Buy)'] * pairs_df['Asset Amount (Buy)']
+    return pairs_df
