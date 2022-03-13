@@ -1,5 +1,5 @@
 import pandas as pd
-from dateutil import parser
+from dateutil import parser, tz
 import pytz
 from pycoingecko import CoinGeckoAPI
 from glob import glob
@@ -28,7 +28,7 @@ def read_cashapp(path):
     cashapp_df = cashapp_df.reset_index(drop=True)
 
     #timezone = pytz.timezone('America/New_York')
-    df['Date'] = [parser.parse(date) for date in cashapp_df["Date"]]
+    df['Date'] = [parser.parse(date).astimezone(tz.UTC) for date in cashapp_df["Date"]]
     df = df.assign(Exchange = 'CashApp') 
 
     def clean_currency(x):
@@ -70,7 +70,7 @@ def read_uniswap(path):
         sell = {key: None for key in list(df.columns)}
         buy = {key: None for key in list(df.columns)}
 
-        sell['Date'] = buy['Date'] = timezone.localize(parser.parse(f'{row["Date"]} {row["Time"]}'))
+        sell['Date'] = buy['Date'] = parser.parse(f'{row["Date"]} {row["Time"]}').astimezone(tz.UTC)
         sell['Exchange'] = buy['Exchange'] = "Uniswap"
         sell['Transaction'], buy['Transaction'] = 'SELL', 'BUY'
         sell['Asset'], buy['Asset'] = row['Sell Currency'], row['Buy Currency']
@@ -93,7 +93,7 @@ def read_coinbase(path):
     coinbase_df = coinbase_df[coinbase_df["Transaction Type"].isin(["Buy", "Sell"])]
     coinbase_df = coinbase_df.reset_index(drop=True)
 
-    df['Date'] = [parser.parse(date) for date in coinbase_df["Timestamp"]]
+    df['Date'] = [parser.parse(date).astimezone(tz.UTC) for date in coinbase_df["Timestamp"]]
     df = df.assign(Exchange = 'Coinbase') 
     df['Transaction'] = coinbase_df['Transaction Type'].apply(str.upper)
     df['Asset'] = coinbase_df['Asset']
@@ -116,7 +116,7 @@ def read_coinbasepro(path):
         record = {key: None for key in list(df.columns)}
         
         if row['price/fee/total unit'] == 'USD':
-            record['Date'] = parser.parse(row["created at"])
+            record['Date'] = parser.parse(row["created at"]).astimezone(tz.UTC)
             record['Transaction'] = row['side']
             record['Asset'] = row['size unit']
             record['Payment'] = 'USD'
@@ -128,7 +128,7 @@ def read_coinbasepro(path):
         else:
             # Record2 identifies the sell-side asset in the swap
             record2 = {key: None for key in list(df.columns)}
-            record['Date'] = record2['Date'] = parser.parse(row["created at"])
+            record['Date'] = record2['Date'] = parser.parse(row["created at"]).astimezone(tz.UTC)
             record['Transaction'] = row['side']
             record2['Transaction'] = {'BUY', 'SELL'}.difference({record['Transaction']}).pop() # Take complement 
             record['Asset'], record2['Asset'] = row['size unit'], row['price/fee/total unit']
@@ -138,7 +138,7 @@ def read_coinbasepro(path):
             record['Asset Amount'] = row['size']
             record['Cost Basis'] = record2['Cost Basis'] = record['Asset Price'] * record['Asset Amount']          
             record2['Asset Amount'] = record2['Cost Basis'] / record2['Asset Price']
-            record['Fee'] = record2['Fee'] = record2['Asset Price'] * row['fee'] 
+            record['Fee'] = record2['Fee'] = (record2['Asset Price'] * row['fee']) / 2
             records.append(record2)
         records.append(record)
     
@@ -158,8 +158,7 @@ def read_fidelity(path):
     transaction_filter = [x & y for x, y in zip(fidelity_df['Symbol'] != ' ', pd.notna(fidelity_df['Symbol']))]
     fidelity_df = fidelity_df.loc[transaction_filter].reset_index(drop=True)
     
-    timezone = pytz.timezone('America/New_York')
-    df['Date'] = [timezone.localize(parser.parse(date)) for date in fidelity_df['Run Date']]
+    df['Date'] = [parser.parse(date).astimezone(tz.UTC) for date in fidelity_df['Run Date']]
     df['Exchange'] = 'Fidelity'
     df['Transaction'] = ['SELL' if quant < 0 else 'BUY' for quant in fidelity_df['Quantity']]
     df['Asset'] = fidelity_df['Symbol']
