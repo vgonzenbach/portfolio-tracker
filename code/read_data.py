@@ -21,7 +21,7 @@ def get_price_at_date(symbol, date):
 
 def read_cashapp(path):
     """Create transaction Data.Frame from CashApp .csv"""
-    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis"])
+    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis", "Fee"])
     
     cashapp_df = pd.read_csv(path)
     cashapp_df = cashapp_df[cashapp_df["Transaction Type"].isin(["Bitcoin Sale", "Bitcoin Buy"])]
@@ -51,12 +51,13 @@ def read_cashapp(path):
     df["Asset Price"] = cashapp_df["Asset Price"].apply(clean_currency).astype(float)
     df["Asset Amount"] = cashapp_df["Asset Amount"]
     df['Cost Basis'] = df['Asset Price'] * df['Asset Amount']
+    df['Fee'] = cashapp_df['Fee'].apply(clean_currency).astype(float).apply(abs)
 
     return(df)
 
 def read_uniswap(path):
     """Create transaction Data.Frame from Zerion/Uniswap .csv"""
-    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis"])
+    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis", "Fee"])
 
     uniswap_df = pd.read_csv(path)
     uniswap_df = uniswap_df[uniswap_df["Transaction Type"] == 'Trade']
@@ -77,7 +78,7 @@ def read_uniswap(path):
         sell["Asset Price"], buy["Asset Price"] = row['Sell Fiat Amount'] / row['Sell Amount'], row['Buy Fiat Amount'] / row['Buy Amount']
         sell["Asset Amount"], buy["Asset Amount"] = row['Sell Amount'], row['Buy Amount']
         sell["Cost Basis"], buy["Cost Basis"] = sell["Asset Price"] * sell["Asset Amount"], buy["Asset Price"] * buy["Asset Amount"]
-
+        sell["Fee"] = buy["Fee"] = row['Fee Fiat Amount'] / 2
         # Transfer data to Data.Frame
         df.loc[index*2] = sell
         df.loc[index*2 + 1] = buy
@@ -86,7 +87,7 @@ def read_uniswap(path):
 
 def read_coinbase(path):
     """Create transaction Data.Frame from Coinbase .csv file"""
-    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis"])
+    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis", "Fee"])
 
     coinbase_df = pd.read_csv(path)
     coinbase_df = coinbase_df[coinbase_df["Transaction Type"].isin(["Buy", "Sell"])]
@@ -100,12 +101,13 @@ def read_coinbase(path):
     df['Asset Price'] = coinbase_df['Spot Price at Transaction']
     df['Asset Amount'] = coinbase_df['Quantity Transacted']
     df['Cost Basis'] = df['Asset Price'] * df['Asset Amount']
+    df['Fee'] = coinbase_df['Fees']
 
     return(df)
 
 def read_coinbasepro(path):
     """Create transaction Data.Frame from Coinbase Pro .csv file"""
-    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis"])
+    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis", "Fee"])
 
     coinbase_df = pd.read_csv(path)
 
@@ -121,6 +123,7 @@ def read_coinbasepro(path):
             record['Asset Price'] = row['price']
             record['Asset Amount'] = row['size']
             record['Cost Basis'] = record['Asset Price'] * record['Asset Amount']
+            record['Fee'] = row['fee']
 
         else:
             # Record2 identifies the sell-side asset in the swap
@@ -135,6 +138,7 @@ def read_coinbasepro(path):
             record['Asset Amount'] = row['size']
             record['Cost Basis'] = record2['Cost Basis'] = record['Asset Price'] * record['Asset Amount']          
             record2['Asset Amount'] = record2['Cost Basis'] / record2['Asset Price']
+            record['Fee'] = record2['Fee'] = record2['Asset Price'] * row['fee'] 
             records.append(record2)
         records.append(record)
     
@@ -145,7 +149,7 @@ def read_coinbasepro(path):
 
 def read_fidelity(path):
     """Reads in data from quarters Fidelity"""
-    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis"])
+    df = pd.DataFrame(columns = ["Date", "Exchange", "Transaction", "Asset", "Payment", "Asset Price", "Asset Amount", "Cost Basis", "Fee"])
     
     paths = glob(path)
     df_list = [pd.read_csv(path, header=1) for path in paths]
@@ -163,6 +167,7 @@ def read_fidelity(path):
     df['Asset Price'] = fidelity_df['Price ($)']
     df['Asset Amount'] = abs(fidelity_df['Quantity'])
     df['Cost Basis'] = df['Asset Price'] * df['Asset Amount']
+    df['Fee'] = fidelity_df['Fees ($)'].fillna(0)
 
     return(df)
     
