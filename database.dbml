@@ -1,0 +1,57 @@
+// Use DBML to define your database structure
+// Docs: https://dbml.dbdiagram.io/docs
+Project portfolio_tracker {
+  database_type: 'SQLite'
+  Note: 'Database Model for crypto tax app'
+}
+
+Table raw_transactions {
+  id INT [pk, increment, not null]
+  date timestamp
+  type VARCHAR(10)
+  exchange VARCHAR(50)
+  asset VARCHAR(50)
+  price DECIMAL(32, 18)
+  amount DECIMAL(32, 18)
+  cost_basis DECIMAL(32, 18)
+  fee DECIMAL (32, 18)
+  Note: 'Transaction Data pulled from Exchange'
+}
+
+Table buys {
+  id INT [pk, increment, not null]
+  transaction_id INT [ ref: > raw_transactions.id ]
+  //date timestamp
+  //exchange VARCHAR(50)
+  //asset VARCHAR(50)e
+  price DECIMAL(32, 18)
+  amount DECIMAL(32, 18)
+  cost_basis DECIMAL(32, 18)
+  fee DECIMAL (32, 18)
+  Note: 'Raw buy amounts are split into multiple transactions to pair with sells'
+}
+
+Table sells {
+  id INT [pk, increment, not null]
+  transaction_id INT [ ref: > raw_transactions.id ]
+  //date timestamp
+  //exchange VARCHAR(50)
+  //asset VARCHAR(50)
+  price DECIMAL(32, 18)
+  amount DECIMAL(32, 18)
+  cost_basis DECIMAL(32, 18)
+  fee DECIMAL (32, 18)
+  Note: 'Raw sell amounts are split into multiple transactions to pair with buys'
+}
+
+Table transaction_pairs {
+  id INT [pk, increment, not null]
+  filing_year INT [ref: > tax_filings.year]
+  buy_id INT [ref: - buys.id]
+  sell_id INT [ref: - sells.id]
+}
+
+Table tax_filings {
+  year INT [pk, increment, not null]
+  completed boolean
+}
