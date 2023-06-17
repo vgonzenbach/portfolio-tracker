@@ -4,15 +4,16 @@ import pytz
 from pycoingecko import CoinGeckoAPI
 from glob import glob
 
+cg = CoinGeckoAPI()
+coins = cg.get_coins_list()
+
 def get_coin_id(symbol):
     """Returns id for a given symbol via CoinGecko API"""
     # Find match for symbol in CoinGecko coins list
-    cg = CoinGeckoAPI()
-    coins = cg.get_coins()
     coin = [coin for coin in coins if symbol.lower() == coin['symbol']].pop()  # Take first match
     return(coin['id'])
 
-def get_price_at_date(symbol, date):
+def get_coin_price_at_date(symbol, date):
     """Given symbol and date returns price via CoinGecko API"""
     cg = CoinGeckoAPI()
     history = cg.get_coin_history_by_id(id=get_coin_id(symbol), date=date.strftime('%d-%m-%Y'))
@@ -116,7 +117,7 @@ def read_coinbasepro(path):
         record = {key: None for key in list(df.columns)}
         
         if row['price/fee/total unit'] == 'USD':
-            record['Date'] = parser.parse(row["created at"]).astimezone(tz.UTC)
+            record['Date'] = parser.parse(row["created at"]).astimezone(tz.UTC).replace(microsecond=0)
             record['Transaction'] = row['side']
             record['Asset'] = row['size unit']
             record['Payment'] = 'USD'
@@ -128,13 +129,13 @@ def read_coinbasepro(path):
         else:
             # Record2 identifies the sell-side asset in the swap
             record2 = {key: None for key in list(df.columns)}
-            record['Date'] = record2['Date'] = parser.parse(row["created at"]).astimezone(tz.UTC)
+            record['Date'] = record2['Date'] = parser.parse(row["created at"]).astimezone(tz.UTC).replace(microsecond=0)
             record['Transaction'] = row['side']
             record2['Transaction'] = {'BUY', 'SELL'}.difference({record['Transaction']}).pop() # Take complement 
             record['Asset'], record2['Asset'] = row['size unit'], row['price/fee/total unit']
             record['Payment'] = record2['Payment'] = 'USD'
-            record['Asset Price'] = get_price_at_date(symbol=row['size unit'], date=record['Date'])
-            record2['Asset Price'] = get_price_at_date(symbol=row['price/fee/total unit'], date=record['Date'])
+            record['Asset Price'] = get_coin_price_at_date(symbol=row['size unit'], date=record['Date'])
+            record2['Asset Price'] = get_coin_price_at_date(symbol=row['price/fee/total unit'], date=record['Date'])
             record['Asset Amount'] = row['size']
             record['Cost Basis'] = record2['Cost Basis'] = record['Asset Price'] * record['Asset Amount']          
             record2['Asset Amount'] = record2['Cost Basis'] / record2['Asset Price']
