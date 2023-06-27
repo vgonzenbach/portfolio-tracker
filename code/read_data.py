@@ -10,12 +10,11 @@ coins = cg.get_coins_list()
 def get_coin_id(symbol):
     """Returns id for a given symbol via CoinGecko API"""
     # Find match for symbol in CoinGecko coins list
-    coin = [coin for coin in coins if symbol.lower() == coin['symbol']].pop()  # Take first match
+    coin = [coin for coin in coins if symbol.lower() == coin['symbol']][0]  # Take first match
     return(coin['id'])
 
 def get_coin_price_at_date(symbol, date):
     """Given symbol and date returns price via CoinGecko API"""
-    cg = CoinGeckoAPI()
     history = cg.get_coin_history_by_id(id=get_coin_id(symbol), date=date.strftime('%d-%m-%Y'))
     price = history['market_data']['current_price']['usd']
     return(price)
